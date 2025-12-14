@@ -2,34 +2,39 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Simple Chat With Admin</title>
+  <title>Chat With Login</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
 
-<h2>Simple Chat (No Login)</h2>
+<h2>Chat (Login Required)</h2>
 
-<p>
-  Name:<br>
-  <input id="username" placeholder="Your name" style="width:95%; padding:5px;">
-</p>
+<div id="loginDiv">
+  <p>Enter your username:</p>
+  <input id="loginInput" placeholder="Username" style="width:95%; padding:5px;">
+  <button onclick="login()">Login</button>
+</div>
 
-<p>
-  Room:<br>
-  <button onclick="setRoom('general')" style="width:30%; margin:2px;">general</button>
-  <button onclick="setRoom('gaming')" style="width:30%; margin:2px;">gaming</button>
-  <button onclick="setRoom('random')" style="width:30%; margin:2px;">random</button>
-  <button onclick="clearRoom()" style="width:95%; margin:5px; background-color:red; color:white;">Clear Room (Admin)</button>
-</p>
+<div id="chatDiv" style="display:none;">
+  <p>Logged in as: <span id="userNameDisplay"></span></p>
 
-<p>Current room: <span id="roomName">general</span></p>
+  <p>
+    Room:<br>
+    <button onclick="setRoom('general')" style="width:30%; margin:2px;">general</button>
+    <button onclick="setRoom('gaming')" style="width:30%; margin:2px;">gaming</button>
+    <button onclick="setRoom('random')" style="width:30%; margin:2px;">random</button>
+    <button id="clearBtn" onclick="clearRoom()" style="width:95%; margin:5px; background-color:red; color:white; display:none;">Clear Room (Admin)</button>
+  </p>
 
-<div id="messages" style="border:1px solid #000; height:300px; overflow-y:auto; padding:5px; margin-bottom:5px;"></div>
+  <p>Current room: <span id="roomName">general</span></p>
 
-<form id="chat-form">
-  <input id="message" placeholder="Type message" required style="width:70%; padding:5px;">
-  <button type="submit" style="width:25%; padding:5px;">Send</button>
-</form>
+  <div id="messages" style="border:1px solid #000; height:300px; overflow-y:auto; padding:5px; margin-bottom:5px;"></div>
+
+  <form id="chat-form">
+    <input id="message" placeholder="Type message" required style="width:70%; padding:5px;">
+    <button type="submit" style="width:25%; padding:5px;">Send</button>
+  </form>
+</div>
 
 <!-- Firebase SDKs -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -37,6 +42,7 @@
 
 <script>
   const adminName = "Kuma"; // Admin username
+  let currentUser = null;
 
   const firebaseConfig = {
     apiKey: "AIzaSyDPrESTFgUAoFjMCCnTtqvGFknmEWb2_Y4",
@@ -53,6 +59,25 @@
   let writeRef = db.ref("rooms/" + currentRoom);
   let readRef = writeRef.limitToLast(50);
 
+  function login() {
+    const username = document.getElementById("loginInput").value.trim();
+    if(!username){
+      alert("Please enter a username");
+      return;
+    }
+    currentUser = username;
+    document.getElementById("userNameDisplay").innerText = currentUser;
+    document.getElementById("loginDiv").style.display = "none";
+    document.getElementById("chatDiv").style.display = "block";
+
+    // Show admin button only for admin
+    if(currentUser === adminName){
+      document.getElementById("clearBtn").style.display = "block";
+    }
+
+    loadMessages();
+  }
+
   function setRoom(room){
     currentRoom = room;
     document.getElementById("roomName").innerText = room;
@@ -68,21 +93,25 @@
   function loadMessages(){
     readRef.on("child_added", snap => {
       const msg = snap.val();
+
+      // Non-admin users cannot see admin messages
+      if(msg.user === adminName && currentUser !== adminName){
+        return; // skip
+      }
+
       const div = document.createElement("div");
       div.style.borderBottom = "1px solid #ccc";
       div.style.padding = "2px 0";
 
-      // Highlight admin messages
       if(msg.user === adminName){
-        div.style.backgroundColor = "#ffe599"; // light yellow
+        div.style.backgroundColor = "#ffe599";
         div.style.fontWeight = "bold";
       }
 
       div.innerText = msg.user + ": " + msg.text;
 
-      // Show delete button if current user is admin
-      const userInput = document.getElementById("username").value.trim();
-      if(userInput === adminName){
+      // Show delete button only if current user is admin
+      if(currentUser === adminName){
         const delBtn = document.createElement("button");
         delBtn.innerText = "X";
         delBtn.style.marginLeft = "5px";
@@ -91,26 +120,25 @@
       }
 
       document.getElementById("messages").appendChild(div);
+
+      // Scroll down
       const msgDiv = document.getElementById("messages");
       msgDiv.scrollTop = msgDiv.scrollHeight;
     });
   }
 
-  loadMessages();
-
-  document.getElementById("chat-form").addEventListener("submit", e => {
+  document.getElementById("chat-form").addEventListener("submit", e=>{
     e.preventDefault();
-
-    const user = document.getElementById("username").value.trim();
-    const text = document.getElementById("message").value;
-
-    if(!user){
-      alert("Please enter a name");
+    if(!currentUser){
+      alert("Please login first");
       return;
     }
 
+    const text = document.getElementById("message").value;
+    if(!text) return;
+
     writeRef.push({
-      user: user,
+      user: currentUser,
       text: text,
       time: Date.now()
     });
@@ -119,8 +147,7 @@
   });
 
   function clearRoom(){
-    const userInput = document.getElementById("username").value.trim();
-    if(userInput !== adminName){
+    if(currentUser !== adminName){
       alert("Only admin can clear the room!");
       return;
     }
