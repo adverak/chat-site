@@ -136,10 +136,19 @@ function loadMessages(){
     div.style.borderBottom = "1px solid #ccc";
     div.style.padding = "2px 0";
 
-    if(msg.user === adminName){ div.style.backgroundColor="#ffe599"; div.style.fontWeight="bold"; }
+    // Prefix admin messages with "Admin: Kuma:"
+    let displayText = msg.text;
+    if(msg.user === adminName){
+      div.style.backgroundColor="#ffe599"; // optional highlight
+      div.style.fontWeight="bold";
+      displayText = "Admin: " + msg.user + ": " + msg.text;
+    } else {
+      displayText = msg.user + ": " + msg.text;
+    }
 
-    div.innerText = msg.user + ": " + msg.text;
+    div.innerText = displayText;
 
+    // Only admin sees delete buttons
     if(currentUser === adminName){
       const delBtn = document.createElement("button");
       delBtn.innerText="X";
