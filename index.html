@@ -151,7 +151,7 @@
 
   function login() {
     const provider = new firebase.auth.GoogleAuthProvider();
-    auth.signInWithPopup(provider);
+    auth.signInWithRedirect(provider);
   }
 
   function logout() { auth.signOut(); }
@@ -161,6 +161,15 @@
       document.getElementById('login').style.display = 'none';
       document.getElementById('app').style.display = 'grid';
       loadMessages();
+    } else {
+      document.getElementById('login').style.display = 'flex';
+      document.getElementById('app').style.display = 'none';
+    }
+  });
+
+  auth.getRedirectResult().catch(error => {
+    alert('Login error: ' + error.message);
+  });
     } else {
       document.getElementById('login').style.display = 'flex';
       document.getElementById('app').style.display = 'none';
