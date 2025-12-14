@@ -2,21 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Secure Chat</title>
+<title>Secure Chat with Persistent Login</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-  body { font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 10px; }
-  input, button { font-size: 1em; margin: 2px 0; }
-  #messages { border: 1px solid #000; height: 300px; overflow-y: auto; padding: 5px; margin-bottom: 5px; }
-  .message { padding: 5px 8px; border-radius: 5px; margin-bottom: 3px; }
-  .user-message { background-color: #f0f0f0; }
-  .admin-message { font-weight: bold; } /* bold, no color */
-  .message button { margin-left: 5px; font-size: 0.8em; }
-  #chat-form { display: flex; gap: 5px; }
-  #chat-form input { flex: 1; }
-  #chat-form button { flex: 0 0 80px; }
-  #roomButtons button { flex: 1; margin: 2px; }
-</style>
 </head>
 <body>
 
@@ -24,34 +11,35 @@
 
 <div id="authDiv">
   <h3>Signup</h3>
-  <input id="signupUser" placeholder="Username" style="width:100%;"><br>
-  <input id="signupPass" type="password" placeholder="Password" style="width:100%;"><br>
+  <input id="signupUser" placeholder="Username" style="width:95%; padding:5px;"><br>
+  <input id="signupPass" type="password" placeholder="Password" style="width:95%; padding:5px;"><br>
   <button onclick="signup()">Signup</button>
 
   <h3>Login</h3>
-  <input id="loginUser" placeholder="Username" style="width:100%;"><br>
-  <input id="loginPass" type="password" placeholder="Password" style="width:100%;"><br>
+  <input id="loginUser" placeholder="Username" style="width:95%; padding:5px;"><br>
+  <input id="loginPass" type="password" placeholder="Password" style="width:95%; padding:5px;"><br>
   <button onclick="login()">Login</button>
 </div>
 
 <div id="chatDiv" style="display:none;">
   <p>Logged in as: <span id="userNameDisplay"></span> <button onclick="logout()">Logout</button></p>
-  <p id="adminStatus"></p>
+  <p id="adminStatus" style="font-weight:bold;"></p>
 
-  <div id="roomButtons" style="display:flex; margin-bottom:5px;">
-    <button onclick="setRoom('general')">General</button>
-    <button onclick="setRoom('gaming')">Gaming</button>
-    <button onclick="setRoom('random')">Random</button>
-  </div>
-  <button id="clearBtn" onclick="clearRoom()" style="width:100%; background-color:red; color:white; display:none;">Clear Room (Admin)</button>
+  <p>
+    Room:<br>
+    <button onclick="setRoom('general')" style="width:30%; margin:2px;">general</button>
+    <button onclick="setRoom('gaming')" style="width:30%; margin:2px;">gaming</button>
+    <button onclick="setRoom('random')" style="width:30%; margin:2px;">random</button>
+    <button id="clearBtn" onclick="clearRoom()" style="width:95%; margin:5px; background-color:red; color:white; display:none;">Clear Room (Admin)</button>
+  </p>
 
   <p>Current room: <span id="roomName">general</span></p>
 
-  <div id="messages"></div>
+  <div id="messages" style="border:1px solid #000; height:300px; overflow-y:auto; padding:5px; margin-bottom:5px;"></div>
 
   <form id="chat-form">
-    <input id="message" placeholder="Type message" required>
-    <button type="submit">Send</button>
+    <input id="message" placeholder="Type message" required style="width:70%; padding:5px;">
+    <button type="submit" style="width:25%; padding:5px;">Send</button>
   </form>
 </div>
 
@@ -60,9 +48,9 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
-// ---------------- JS from previous full version ----------------
 const adminName = "Kuma";
 let currentUser = null;
+
 const firebaseConfig = {
   apiKey: "AIzaSyDPrESTFgUAoFjMCCnTtqvGFknmEWb2_Y4",
   authDomain: "github-chat-c891d.firebaseapp.com",
@@ -70,6 +58,7 @@ const firebaseConfig = {
   projectId: "github-chat-c891d",
   appId: "1:872611172640:web:c404e43cf0dc7a09644745"
 };
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
@@ -77,6 +66,7 @@ let currentRoom = "general";
 let writeRef = db.ref("rooms/" + currentRoom);
 let readRef = writeRef.limitToLast(50);
 
+// ----------------- HASH FUNCTION -----------------
 async function hashPassword(password){
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
@@ -85,36 +75,51 @@ async function hashPassword(password){
   return hashArray.map(b => b.toString(16).padStart(2,'0')).join('');
 }
 
+// ----------------- SIGNUP -----------------
 async function signup(){
   const username = document.getElementById("signupUser").value.trim();
   const password = document.getElementById("signupPass").value.trim();
   if(!username || !password){ alert("Enter username and password"); return; }
+
   const userRef = db.ref("users/" + username);
   const snapshot = await userRef.get();
-  if(snapshot.exists()){ alert("Username exists"); return; }
+  if(snapshot.exists()){
+    alert("Username already exists");
+    return;
+  }
+
   const hashed = await hashPassword(password);
   await userRef.set({ password: hashed });
   alert("Signup successful! Please login.");
+  document.getElementById("signupUser").value="";
+  document.getElementById("signupPass").value="";
 }
 
+// ----------------- LOGIN -----------------
 async function login(){
   const username = document.getElementById("loginUser").value.trim();
   const password = document.getElementById("loginPass").value.trim();
   if(!username || !password){ alert("Enter username and password"); return; }
+
   const userRef = db.ref("users/" + username);
   const snapshot = await userRef.get();
   if(!snapshot.exists()){ alert("Username does not exist"); return; }
+
   const hashed = await hashPassword(password);
   if(hashed !== snapshot.val().password){ alert("Incorrect password"); return; }
+
   currentUser = username;
-  localStorage.setItem("chatUser", currentUser);
+  localStorage.setItem("chatUser", currentUser); // persistent login
   document.getElementById("userNameDisplay").innerText = currentUser;
   document.getElementById("authDiv").style.display = "none";
   document.getElementById("chatDiv").style.display = "block";
-  if(currentUser === adminName) document.getElementById("clearBtn").style.display = "block";
+
+  if(currentUser === adminName){ document.getElementById("clearBtn").style.display = "block"; }
+
   loadMessages();
 }
 
+// ----------------- LOGOUT -----------------
 function logout(){
   localStorage.removeItem("chatUser");
   currentUser = null;
@@ -122,6 +127,7 @@ function logout(){
   document.getElementById("chatDiv").style.display = "none";
 }
 
+// ----------------- CHECK LOGIN ON PAGE LOAD -----------------
 window.onload = function() {
   const storedUser = localStorage.getItem("chatUser");
   if(storedUser) {
@@ -134,6 +140,7 @@ window.onload = function() {
   }
 };
 
+// ----------------- CHAT FUNCTIONS -----------------
 function setRoom(room){
   currentRoom = room;
   document.getElementById("roomName").innerText = room;
@@ -151,26 +158,33 @@ function loadMessages(){
   readRef.on("child_added", snap => {
     const msg = snap.val();
     const div = document.createElement("div");
-    div.className = "message";
+    div.style.borderBottom = "1px solid #ccc";
+    div.style.padding = "2px 0";
 
+    // Admin messages get "Admin: Kuma:" prefix
     let displayText = msg.text;
     if(msg.user === adminName){
-      div.classList.add("admin-message");
+      div.style.backgroundColor="#ffe599";
+      div.style.fontWeight="bold";
       displayText = "Admin: " + msg.user + ": " + msg.text;
       adminPresent = true;
       adminStatus.innerText = "Admin account: " + adminName;
-    } else {
-      div.classList.add("user-message");
+    }
+
+    if(msg.user !== adminName){
       displayText = msg.user + ": " + msg.text;
     }
 
-    if(!adminPresent) adminStatus.innerText = "";
+    if(!adminPresent){
+      adminStatus.innerText = "";
+    }
 
     div.innerText = displayText;
 
     if(currentUser === adminName){
       const delBtn = document.createElement("button");
       delBtn.innerText="X";
+      delBtn.style.marginLeft="5px";
       delBtn.onclick = () => writeRef.child(snap.key).remove();
       div.appendChild(delBtn);
     }
@@ -185,6 +199,7 @@ document.getElementById("chat-form").addEventListener("submit", e=>{
   if(!currentUser){ alert("Please login first"); return; }
   const text = document.getElementById("message").value;
   if(!text) return;
+
   writeRef.push({ user: currentUser, text: text, time: Date.now() });
   document.getElementById("message").value="";
 });
