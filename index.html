@@ -29,20 +29,22 @@
     <button type="submit">Send</button>
   </form>
 
+  <br>
   <button onclick="logout()">Logout</button>
 </div>
 
+<!-- Firebase SDKs (NO IMPORTS) -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
   const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    databaseURL: "https://YOUR_PROJECT.firebaseio.com",
-    projectId: "YOUR_PROJECT",
-    appId: "APP_ID"
+    apiKey: "AIzaSyDPrESTFgUAoFjMCCnTtqvGFknmEWb2_Y4",
+    authDomain: "github-chat-c891d.firebaseapp.com",
+    databaseURL: "https://github-chat-c891d-default-rtdb.firebaseio.com",
+    projectId: "github-chat-c891d",
+    appId: "1:872611172640:web:c404e43cf0dc7a09644745"
   };
 
   firebase.initializeApp(firebaseConfig);
@@ -50,8 +52,8 @@
   const auth = firebase.auth();
   const db = firebase.database();
 
-  let currentRoom = 'general';
-  let messagesRef = db.ref('rooms/' + currentRoom).limitToLast(50);
+  let currentRoom = "general";
+  let messagesRef = db.ref("rooms/" + currentRoom).limitToLast(50);
 
   function login() {
     const provider = new firebase.auth.GoogleAuthProvider();
@@ -64,42 +66,44 @@
 
   auth.onAuthStateChanged(user => {
     if (user) {
-      document.getElementById('login').style.display = 'none';
-      document.getElementById('app').style.display = 'block';
+      document.getElementById("login").style.display = "none";
+      document.getElementById("app").style.display = "block";
       loadMessages();
     } else {
-      document.getElementById('login').style.display = 'block';
-      document.getElementById('app').style.display = 'none';
+      document.getElementById("login").style.display = "block";
+      document.getElementById("app").style.display = "none";
     }
   });
 
   function setRoom(room) {
     currentRoom = room;
-    document.getElementById('roomName').innerText = room;
+    document.getElementById("roomName").innerText = room;
     messagesRef.off();
-    messagesRef = db.ref('rooms/' + room).limitToLast(50);
-    document.getElementById('messages').innerHTML = '';
+    messagesRef = db.ref("rooms/" + room).limitToLast(50);
+    document.getElementById("messages").innerHTML = "";
     loadMessages();
   }
 
   function loadMessages() {
-    messagesRef.on('child_added', snap => {
+    messagesRef.on("child_added", snap => {
       const msg = snap.val();
-      const div = document.createElement('div');
-      div.innerText = msg.user + ': ' + msg.text;
-      document.getElementById('messages').appendChild(div);
+      const div = document.createElement("div");
+      div.innerText = msg.user + ": " + msg.text;
+      document.getElementById("messages").appendChild(div);
     });
   }
 
-  document.getElementById('chat-form').addEventListener('submit', e => {
+  document.getElementById("chat-form").addEventListener("submit", e => {
     e.preventDefault();
-    const text = document.getElementById('message').value;
+    const text = document.getElementById("message").value;
+
     messagesRef.push({
       user: auth.currentUser.displayName,
       text: text,
       time: Date.now()
     });
-    document.getElementById('message').value = '';
+
+    document.getElementById("message").value = "";
   });
 </script>
 
