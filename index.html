@@ -4,10 +4,43 @@
 <meta charset="UTF-8">
 <title>Secure Chat with Multi-User Voice Call</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body {
+  background-color: white;
+  color: black;
+  font-family: Arial, sans-serif;
+}
+
+#messages {
+  background-color: #f0f0f0;
+}
+
+#chatDiv input, #chatDiv button {
+  background-color: white;
+  color: black;
+  border: 1px solid #ccc;
+}
+
+.dark-mode {
+  background-color: #121212 !important;
+  color: #e0e0e0 !important;
+}
+
+.dark-mode #messages {
+  background-color: #1e1e1e !important;
+}
+
+.dark-mode #chatDiv input, .dark-mode #chatDiv button {
+  background-color: #1e1e1e !important;
+  color: #e0e0e0 !important;
+  border: 1px solid #444 !important;
+}
+</style>
 </head>
 <body>
 
 <h2>Chat (Signup/Login Required)</h2>
+<p><button id="toggleDarkMode">Toggle Dark Mode</button></p>
 
 <div id="authDiv">
   <h3>Signup</h3>
@@ -132,7 +165,7 @@ async function login(){
 
 // ----------------- LOGOUT -----------------
 function logout(){
-  leaveVoiceCall(); // remove from voiceUsers if in call
+  leaveVoiceCall(); 
   localStorage.removeItem("chatUser");
   currentUser = null;
   document.getElementById("authDiv").style.display = "block";
@@ -155,7 +188,7 @@ window.onload = function() {
 
 // ----------------- CHAT FUNCTIONS -----------------
 function setRoom(room){
-  leaveVoiceCall(); // leave old room
+  leaveVoiceCall(); 
   currentRoom = room;
   document.getElementById("roomName").innerText = room;
   readRef.off();
@@ -178,7 +211,7 @@ function loadMessages(){
 
     let displayText = msg.text;
     if(msg.user === adminName){
-      div.style.fontWeight="bold"; // no color
+      div.style.fontWeight="bold"; 
       displayText = "Admin: " + msg.user + ": " + msg.text;
       adminPresent = true;
       adminStatus.innerText = "Admin account: " + adminName;
@@ -227,13 +260,12 @@ function clearRoom(){
 
 // ----------------- MULTI-USER VOICE CALL -----------------
 let localStream;
-let peers = {}; // { username: RTCPeerConnection }
+let peers = {}; 
 let inVoiceCall = false;
 
 const voiceUsersRef = () => db.ref("voiceUsers/" + currentRoom);
 const callsRef = () => db.ref("calls/" + currentRoom);
 
-// Update voice user list UI
 function updateVoiceUsersList(users){
   const list = document.getElementById("voiceUsersList");
   list.innerHTML = "";
@@ -252,16 +284,13 @@ function setupVoiceUsersListener(){
   });
 }
 
-// Helper to create peer connection
 async function createPeerConnection(otherUser, isInitiator){
   if(peers[otherUser]) return;
   const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
   peers[otherUser] = pc;
 
-  // Add local audio
   localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-  // Remote audio element
   const remoteAudio = document.createElement("audio");
   remoteAudio.autoplay = true;
   remoteAudio.id = "audio_" + otherUser;
@@ -280,14 +309,13 @@ async function createPeerConnection(otherUser, isInitiator){
   }
 }
 
-// Setup call signaling
 function setupCallListener(){
   callsRef().on("child_added", async snap => {
     const data = snap.val();
     const keyParts = snap.key.split("_");
     const sender = keyParts[0], receiver = keyParts[1];
 
-    if(receiver !== currentUser) return; // not for me
+    if(receiver !== currentUser) return;
     if(!peers[sender]) await createPeerConnection(sender, false);
 
     const pc = peers[sender];
@@ -306,7 +334,6 @@ function setupCallListener(){
   });
 }
 
-// Join voice call
 async function joinVoiceCall(){
   if(inVoiceCall) return;
   if(!currentUser) return alert("Login first");
@@ -315,12 +342,10 @@ async function joinVoiceCall(){
   document.getElementById("startCall").style.display="none";
   document.getElementById("leaveCall").style.display="inline";
 
-  // Add self to voiceUsers
   await voiceUsersRef().child(currentUser).set(true);
 
   localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-  // Create connections with all existing users
   voiceUsersRef().once("value", snap => {
     const usersObj = snap.val() || {};
     Object.keys(usersObj).forEach(u => {
@@ -331,34 +356,32 @@ async function joinVoiceCall(){
   setupCallListener();
 }
 
-// Leave voice call
 async function leaveVoiceCall(){
   if(!inVoiceCall) return;
   inVoiceCall = false;
   document.getElementById("startCall").style.display="inline";
   document.getElementById("leaveCall").style.display="none";
 
-  // Remove self from voiceUsers
   await voiceUsersRef().child(currentUser).remove();
 
-  // Close all PeerConnections
   Object.values(peers).forEach(pc => pc.close());
   peers = {};
 
-  // Remove remote audio elements
   document.getElementById("remoteAudios").innerHTML="";
 }
 
-// Buttons
 document.getElementById("startCall").onclick = joinVoiceCall;
 document.getElementById("leaveCall").onclick = leaveVoiceCall;
-
-// Remove user from voiceUsers if closing tab
 window.addEventListener("beforeunload", async () => {
   if(inVoiceCall && currentUser){
     await voiceUsersRef().child(currentUser).remove();
   }
 });
+
+// ----------------- DARK MODE -----------------
+document.getElementById("toggleDarkMode").onclick = () => {
+  document.body.classList.toggle("dark-mode");
+};
 </script>
 </body>
 </html>
