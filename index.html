@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Secure Chat with Signup/Login</title>
+<title>Secure Chat with Persistent Login</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
 
-
+<h2>Chat (Signup/Login Required)</h2>
 
 <div id="authDiv">
   <h3>Signup</h3>
@@ -22,8 +22,8 @@
 </div>
 
 <div id="chatDiv" style="display:none;">
-  <p>Logged in as: <span id="userNameDisplay"></span></p>
- 
+  <p>Logged in as: <span id="userNameDisplay"></span> <button onclick="logout()">Logout</button></p>
+  <p>Admin account: <strong>Kuma</strong></p>
 
   <p>
     Room:<br>
@@ -109,6 +109,7 @@ async function login(){
   if(hashed !== snapshot.val().password){ alert("Incorrect password"); return; }
 
   currentUser = username;
+  localStorage.setItem("chatUser", currentUser); // persistent login
   document.getElementById("userNameDisplay").innerText = currentUser;
   document.getElementById("authDiv").style.display = "none";
   document.getElementById("chatDiv").style.display = "block";
@@ -117,6 +118,27 @@ async function login(){
 
   loadMessages();
 }
+
+// ----------------- LOGOUT -----------------
+function logout(){
+  localStorage.removeItem("chatUser");
+  currentUser = null;
+  document.getElementById("authDiv").style.display = "block";
+  document.getElementById("chatDiv").style.display = "none";
+}
+
+// ----------------- CHECK LOGIN ON PAGE LOAD -----------------
+window.onload = function() {
+  const storedUser = localStorage.getItem("chatUser");
+  if(storedUser) {
+    currentUser = storedUser;
+    document.getElementById("userNameDisplay").innerText = currentUser;
+    document.getElementById("authDiv").style.display = "none";
+    document.getElementById("chatDiv").style.display = "block";
+    if(currentUser === adminName) document.getElementById("clearBtn").style.display = "block";
+    loadMessages();
+  }
+};
 
 // ----------------- CHAT FUNCTIONS -----------------
 function setRoom(room){
@@ -136,10 +158,10 @@ function loadMessages(){
     div.style.borderBottom = "1px solid #ccc";
     div.style.padding = "2px 0";
 
-    // Prefix admin messages with "Admin: Kuma:"
+    // Admin messages get "Admin: Kuma:" prefix
     let displayText = msg.text;
     if(msg.user === adminName){
-      div.style.backgroundColor="#ffe599"; // optional highlight
+      div.style.backgroundColor="#ffe599";
       div.style.fontWeight="bold";
       displayText = "Admin: " + msg.user + ": " + msg.text;
     } else {
@@ -148,7 +170,6 @@ function loadMessages(){
 
     div.innerText = displayText;
 
-    // Only admin sees delete buttons
     if(currentUser === adminName){
       const delBtn = document.createElement("button");
       delBtn.innerText="X";
