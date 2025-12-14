@@ -2,40 +2,35 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Simple GitHub Chat</title>
+  <title>Simple Public Chat</title>
 </head>
 <body>
 
-<h2>Simple Chat</h2>
+<h2>Simple Chat (No Login)</h2>
 
-<div id="login">
-  <button onclick="login()">Sign in with Google</button>
-</div>
+<p>
+  Name:
+  <input id="username" placeholder="Your name" required>
+</p>
 
-<div id="app" style="display:none">
-  <p>
-    Room:
-    <button onclick="setRoom('general')">general</button>
-    <button onclick="setRoom('gaming')">gaming</button>
-    <button onclick="setRoom('random')">random</button>
-  </p>
+<p>
+  Room:
+  <button onclick="setRoom('general')">general</button>
+  <button onclick="setRoom('gaming')">gaming</button>
+  <button onclick="setRoom('random')">random</button>
+</p>
 
-  <p id="roomName">general</p>
+<p id="roomName">general</p>
 
-  <div id="messages"></div>
+<div id="messages"></div>
 
-  <form id="chat-form">
-    <input id="message" placeholder="Type message" required>
-    <button type="submit">Send</button>
-  </form>
+<form id="chat-form">
+  <input id="message" placeholder="Type message" required>
+  <button type="submit">Send</button>
+</form>
 
-  <br>
-  <button onclick="logout()">Logout</button>
-</div>
-
-<!-- Firebase SDKs (NO IMPORTS) -->
+<!-- Firebase SDKs -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
@@ -49,31 +44,10 @@
 
   firebase.initializeApp(firebaseConfig);
 
-  const auth = firebase.auth();
   const db = firebase.database();
 
   let currentRoom = "general";
   let messagesRef = db.ref("rooms/" + currentRoom).limitToLast(50);
-
-  function login() {
-    const provider = new firebase.auth.GoogleAuthProvider();
-    auth.signInWithRedirect(provider);
-  }
-
-  function logout() {
-    auth.signOut();
-  }
-
-  auth.onAuthStateChanged(user => {
-    if (user) {
-      document.getElementById("login").style.display = "none";
-      document.getElementById("app").style.display = "block";
-      loadMessages();
-    } else {
-      document.getElementById("login").style.display = "block";
-      document.getElementById("app").style.display = "none";
-    }
-  });
 
   function setRoom(room) {
     currentRoom = room;
@@ -93,12 +67,21 @@
     });
   }
 
+  loadMessages();
+
   document.getElementById("chat-form").addEventListener("submit", e => {
     e.preventDefault();
+
+    const user = document.getElementById("username").value.trim();
     const text = document.getElementById("message").value;
 
+    if (!user) {
+      alert("Please enter a name");
+      return;
+    }
+
     messagesRef.push({
-      user: auth.currentUser.displayName,
+      user: user,
       text: text,
       time: Date.now()
     });
