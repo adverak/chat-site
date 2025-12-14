@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Secure Chat with Persistent Login</title>
+<title>Secure Chat with Voice Call</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
@@ -41,6 +41,11 @@
     <input id="message" placeholder="Type message" required style="width:70%; padding:5px;">
     <button type="submit" style="width:25%; padding:5px;">Send</button>
   </form>
+
+  <p>
+    <button id="startCall">Start Voice Call</button>
+    <audio id="remoteAudio" autoplay></audio>
+  </p>
 </div>
 
 <!-- Firebase SDKs -->
@@ -161,11 +166,9 @@ function loadMessages(){
     div.style.borderBottom = "1px solid #ccc";
     div.style.padding = "2px 0";
 
-    // Admin messages get "Admin: Kuma:" prefix
     let displayText = msg.text;
     if(msg.user === adminName){
-      div.style.backgroundColor="#ffe599";
-      div.style.fontWeight="bold";
+      div.style.fontWeight="bold"; // no color
       displayText = "Admin: " + msg.user + ": " + msg.text;
       adminPresent = true;
       adminStatus.innerText = "Admin account: " + adminName;
@@ -211,6 +214,61 @@ function clearRoom(){
     document.getElementById("messages").innerHTML="";
   }
 }
+
+// ----------------- VOICE CALL -----------------
+let localStream;
+let pc;
+const servers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+let callRef;
+
+document.getElementById("startCall").onclick = async function() {
+  if(!currentUser){ alert("Please login first"); return; }
+
+  callRef = db.ref("calls/" + currentRoom);
+  localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+  pc = new RTCPeerConnection(servers);
+  localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+  pc.ontrack = (event) => {
+    document.getElementById("remoteAudio").srcObject = event.streams[0];
+  };
+
+  pc.onicecandidate = (event) => {
+    if(event.candidate){
+      callRef.push({ type: "candidate", candidate: event.candidate.toJSON(), sender: currentUser });
+    }
+  };
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  callRef.push({ type: "offer", sdp: offer.sdp, sender: currentUser });
+
+  callRef.on("child_added", async (snap) => {
+    const data = snap.val();
+    if(data.sender === currentUser) return;
+
+    if(data.type === "answer"){
+      await pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
+    } else if(data.type === "candidate"){
+      try { await pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } 
+      catch(e){ console.error(e); }
+    } else if(data.type === "offer"){
+      if(!pc){
+        pc = new RTCPeerConnection(servers);
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        pc.ontrack = (event) => document.getElementById("remoteAudio").srcObject = event.streams[0];
+        pc.onicecandidate = (event) => {
+          if(event.candidate) callRef.push({ type: "candidate", candidate: event.candidate.toJSON(), sender: currentUser });
+        };
+      }
+      await pc.setRemoteDescription({ type: "offer", sdp: data.sdp });
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      callRef.push({ type: "answer", sdp: answer.sdp, sender: currentUser });
+    }
+  });
+};
 </script>
 </body>
 </html>
