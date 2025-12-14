@@ -252,6 +252,61 @@ function setupVoiceUsersListener(){
   });
 }
 
+// Helper to create peer connection
+async function createPeerConnection(otherUser, isInitiator){
+  if(peers[otherUser]) return;
+  const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+  peers[otherUser] = pc;
+
+  // Add local audio
+  localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+  // Remote audio element
+  const remoteAudio = document.createElement("audio");
+  remoteAudio.autoplay = true;
+  remoteAudio.id = "audio_" + otherUser;
+  document.getElementById("remoteAudios").appendChild(remoteAudio);
+
+  pc.ontrack = e => { remoteAudio.srcObject = e.streams[0]; };
+
+  pc.onicecandidate = e => {
+    if(e.candidate) callsRef().child(currentUser + "_" + otherUser).set({ type: "candidate", candidate: e.candidate.toJSON() });
+  };
+
+  if(isInitiator){
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    callsRef().child(currentUser + "_" + otherUser).set({ type: "offer", sdp: offer.sdp });
+  }
+}
+
+// Setup call signaling
+function setupCallListener(){
+  callsRef().on("child_added", async snap => {
+    const data = snap.val();
+    const keyParts = snap.key.split("_");
+    const sender = keyParts[0], receiver = keyParts[1];
+
+    if(receiver !== currentUser) return; // not for me
+    if(!peers[sender]) await createPeerConnection(sender, false);
+
+    const pc = peers[sender];
+
+    if(data.type === "offer"){
+      await pc.setRemoteDescription({ type: "offer", sdp: data.sdp });
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      callsRef().child(currentUser + "_" + sender).set({ type: "answer", sdp: answer.sdp });
+    } else if(data.type === "answer"){
+      await pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
+    } else if(data.type === "candidate"){
+      try { await pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } 
+      catch(e){ console.error(e); }
+    }
+  });
+}
+
+// Join voice call
 async function joinVoiceCall(){
   if(inVoiceCall) return;
   if(!currentUser) return alert("Login first");
@@ -265,59 +320,18 @@ async function joinVoiceCall(){
 
   localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-  // Listen for other users joining
-  voiceUsersRef().on("child_added", async snap => {
-    const otherUser = snap.key;
-    if(otherUser === currentUser) return;
-
-    if(peers[otherUser]) return; // already connected
-
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-    peers[otherUser] = pc;
-
-    // Add local audio
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-    // Remote audio element
-    const remoteAudio = document.createElement("audio");
-    remoteAudio.autoplay = true;
-    remoteAudio.id = "audio_" + otherUser;
-    document.getElementById("remoteAudios").appendChild(remoteAudio);
-
-    pc.ontrack = e => { remoteAudio.srcObject = e.streams[0]; };
-
-    pc.onicecandidate = e => {
-      if(e.candidate) callsRef().child(otherUser + "_" + currentUser).set({ type: "candidate", candidate: e.candidate.toJSON() });
-    };
-
-    // Create offer
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    callsRef().child(currentUser + "_" + otherUser).set({ type: "offer", sdp: offer.sdp });
-
-    // Listen for signaling messages
-    callsRef().on("child_added", async snap => {
-      const data = snap.val();
-      const keyParts = snap.key.split("_");
-      const sender = keyParts[0], receiver = keyParts[1];
-      if(receiver !== currentUser) return; // ignore messages not for me
-      if(!peers[sender]) return;
-
-      if(data.type === "offer"){
-        await peers[sender].setRemoteDescription({ type: "offer", sdp: data.sdp });
-        const answer = await peers[sender].createAnswer();
-        await peers[sender].setLocalDescription(answer);
-        callsRef().child(currentUser + "_" + sender).set({ type: "answer", sdp: answer.sdp });
-      } else if(data.type === "answer"){
-        await peers[sender].setRemoteDescription({ type: "answer", sdp: data.sdp });
-      } else if(data.type === "candidate"){
-        try { await peers[sender].addIceCandidate(new RTCIceCandidate(data.candidate)); } 
-        catch(e){ console.error(e); }
-      }
+  // Create connections with all existing users
+  voiceUsersRef().once("value", snap => {
+    const usersObj = snap.val() || {};
+    Object.keys(usersObj).forEach(u => {
+      if(u !== currentUser) createPeerConnection(u, true);
     });
   });
+
+  setupCallListener();
 }
 
+// Leave voice call
 async function leaveVoiceCall(){
   if(!inVoiceCall) return;
   inVoiceCall = false;
