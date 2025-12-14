@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Chat With Signup/Login</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8">
+<title>Secure Chat with Signup/Login</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
 
@@ -48,157 +48,128 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
-  const adminName = "Kuma"; // Admin username
-  let currentUser = null;
+const adminName = "Kuma";
+let currentUser = null;
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyDPrESTFgUAoFjMCCnTtqvGFknmEWb2_Y4",
-    authDomain: "github-chat-c891d.firebaseapp.com",
-    databaseURL: "https://github-chat-c891d-default-rtdb.firebaseio.com",
-    projectId: "github-chat-c891d",
-    appId: "1:872611172640:web:c404e43cf0dc7a09644745"
-  };
+const firebaseConfig = {
+  apiKey: "AIzaSyDPrESTFgUAoFjMCCnTtqvGFknmEWb2_Y4",
+  authDomain: "github-chat-c891d.firebaseapp.com",
+  databaseURL: "https://github-chat-c891d-default-rtdb.firebaseio.com",
+  projectId: "github-chat-c891d",
+  appId: "1:872611172640:web:c404e43cf0dc7a09644745"
+};
 
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-  let currentRoom = "general";
-  let writeRef = db.ref("rooms/" + currentRoom);
-  let readRef = writeRef.limitToLast(50);
+let currentRoom = "general";
+let writeRef = db.ref("rooms/" + currentRoom);
+let readRef = writeRef.limitToLast(50);
 
-  // ----------------- SIGNUP -----------------
-  function signup(){
-    const username = document.getElementById("signupUser").value.trim();
-    const password = document.getElementById("signupPass").value.trim();
-    if(!username || !password){
-      alert("Enter username and password");
-      return;
+// ----------------- HASH FUNCTION -----------------
+async function hashPassword(password){
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+// ----------------- SIGNUP -----------------
+async function signup(){
+  const username = document.getElementById("signupUser").value.trim();
+  const password = document.getElementById("signupPass").value.trim();
+  if(!username || !password){ alert("Enter username and password"); return; }
+
+  const userRef = db.ref("users/" + username);
+  const snapshot = await userRef.get();
+  if(snapshot.exists()){
+    alert("Username already exists");
+    return;
+  }
+
+  const hashed = await hashPassword(password);
+  await userRef.set({ password: hashed });
+  alert("Signup successful! Please login.");
+  document.getElementById("signupUser").value="";
+  document.getElementById("signupPass").value="";
+}
+
+// ----------------- LOGIN -----------------
+async function login(){
+  const username = document.getElementById("loginUser").value.trim();
+  const password = document.getElementById("loginPass").value.trim();
+  if(!username || !password){ alert("Enter username and password"); return; }
+
+  const userRef = db.ref("users/" + username);
+  const snapshot = await userRef.get();
+  if(!snapshot.exists()){ alert("Username does not exist"); return; }
+
+  const hashed = await hashPassword(password);
+  if(hashed !== snapshot.val().password){ alert("Incorrect password"); return; }
+
+  currentUser = username;
+  document.getElementById("userNameDisplay").innerText = currentUser;
+  document.getElementById("authDiv").style.display = "none";
+  document.getElementById("chatDiv").style.display = "block";
+
+  if(currentUser === adminName){ document.getElementById("clearBtn").style.display = "block"; }
+
+  loadMessages();
+}
+
+// ----------------- CHAT FUNCTIONS -----------------
+function setRoom(room){
+  currentRoom = room;
+  document.getElementById("roomName").innerText = room;
+  readRef.off();
+  writeRef = db.ref("rooms/" + room);
+  readRef = writeRef.limitToLast(50);
+  document.getElementById("messages").innerHTML = "";
+  loadMessages();
+}
+
+function loadMessages(){
+  readRef.on("child_added", snap => {
+    const msg = snap.val();
+    const div = document.createElement("div");
+    div.style.borderBottom = "1px solid #ccc";
+    div.style.padding = "2px 0";
+
+    if(msg.user === adminName){ div.style.backgroundColor="#ffe599"; div.style.fontWeight="bold"; }
+
+    div.innerText = msg.user + ": " + msg.text;
+
+    if(currentUser === adminName){
+      const delBtn = document.createElement("button");
+      delBtn.innerText="X";
+      delBtn.style.marginLeft="5px";
+      delBtn.onclick = () => writeRef.child(snap.key).remove();
+      div.appendChild(delBtn);
     }
 
-    const userRef = db.ref("users/" + username);
-    userRef.get().then(snapshot => {
-      if(snapshot.exists()){
-        alert("Username already exists");
-      } else {
-        userRef.set({ password: password });
-        alert("Signup successful! Please login.");
-        document.getElementById("signupUser").value="";
-        document.getElementById("signupPass").value="";
-      }
-    });
-  }
-
-  // ----------------- LOGIN -----------------
-  function login(){
-    const username = document.getElementById("loginUser").value.trim();
-    const password = document.getElementById("loginPass").value.trim();
-    if(!username || !password){
-      alert("Enter username and password");
-      return;
-    }
-
-    const userRef = db.ref("users/" + username);
-    userRef.get().then(snapshot=>{
-      if(!snapshot.exists()){
-        alert("Username does not exist");
-      } else {
-        const storedPass = snapshot.val().password;
-        if(storedPass !== password){
-          alert("Incorrect password");
-        } else {
-          currentUser = username;
-          document.getElementById("userNameDisplay").innerText = currentUser;
-          document.getElementById("authDiv").style.display = "none";
-          document.getElementById("chatDiv").style.display = "block";
-
-          // Show admin button only for admin
-          if(currentUser === adminName){
-            document.getElementById("clearBtn").style.display = "block";
-          }
-
-          loadMessages();
-        }
-      }
-    });
-  }
-
-  // ----------------- CHAT FUNCTIONS -----------------
-  function setRoom(room){
-    currentRoom = room;
-    document.getElementById("roomName").innerText = room;
-
-    readRef.off();
-    writeRef = db.ref("rooms/" + room);
-    readRef = writeRef.limitToLast(50);
-
-    document.getElementById("messages").innerHTML = "";
-    loadMessages();
-  }
-
-  function loadMessages(){
-    readRef.on("child_added", snap => {
-      const msg = snap.val();
-
-      const div = document.createElement("div");
-      div.style.borderBottom = "1px solid #ccc";
-      div.style.padding = "2px 0";
-
-      // Highlight admin messages for everyone
-      if(msg.user === adminName){
-        div.style.backgroundColor = "#ffe599";
-        div.style.fontWeight = "bold";
-      }
-
-      div.innerText = msg.user + ": " + msg.text;
-
-      // Show delete button only if current user is admin
-      if(currentUser === adminName){
-        const delBtn = document.createElement("button");
-        delBtn.innerText = "X";
-        delBtn.style.marginLeft = "5px";
-        delBtn.onclick = () => writeRef.child(snap.key).remove();
-        div.appendChild(delBtn);
-      }
-
-      document.getElementById("messages").appendChild(div);
-
-      // Scroll to bottom
-      const msgDiv = document.getElementById("messages");
-      msgDiv.scrollTop = msgDiv.scrollHeight;
-    });
-  }
-
-  document.getElementById("chat-form").addEventListener("submit", e=>{
-    e.preventDefault();
-    if(!currentUser){
-      alert("Please login first");
-      return;
-    }
-
-    const text = document.getElementById("message").value;
-    if(!text) return;
-
-    writeRef.push({
-      user: currentUser,
-      text: text,
-      time: Date.now()
-    });
-
-    document.getElementById("message").value = "";
+    document.getElementById("messages").appendChild(div);
+    document.getElementById("messages").scrollTop = document.getElementById("messages").scrollHeight;
   });
+}
 
-  function clearRoom(){
-    if(currentUser !== adminName){
-      alert("Only admin can clear the room!");
-      return;
-    }
-    if(confirm("Are you sure you want to clear all messages in this room?")){
-      writeRef.remove();
-      document.getElementById("messages").innerHTML = "";
-    }
+document.getElementById("chat-form").addEventListener("submit", e=>{
+  e.preventDefault();
+  if(!currentUser){ alert("Please login first"); return; }
+  const text = document.getElementById("message").value;
+  if(!text) return;
+
+  writeRef.push({ user: currentUser, text: text, time: Date.now() });
+  document.getElementById("message").value="";
+});
+
+function clearRoom(){
+  if(currentUser !== adminName){ alert("Only admin can clear the room!"); return; }
+  if(confirm("Are you sure you want to clear all messages in this room?")){
+    writeRef.remove();
+    document.getElementById("messages").innerHTML="";
   }
-
+}
 </script>
-
 </body>
 </html>
