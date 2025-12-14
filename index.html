@@ -152,7 +152,7 @@ async function login(){
   if(hashed !== snapshot.val().password){ alert("Incorrect password"); return; }
 
   currentUser = username;
-  localStorage.setItem("chatUser", currentUser); // persistent login
+  localStorage.setItem("chatUser", currentUser);
   document.getElementById("userNameDisplay").innerText = currentUser;
   document.getElementById("authDiv").style.display = "none";
   document.getElementById("chatDiv").style.display = "block";
@@ -266,6 +266,23 @@ let inVoiceCall = false;
 const voiceUsersRef = () => db.ref("voiceUsers/" + currentRoom);
 const callsRef = () => db.ref("calls/" + currentRoom);
 
+// Beep sound function
+function playJoinSound(){
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const oscillator = ctx.createOscillator();
+  const gainNode = ctx.createGain();
+
+  oscillator.type = 'sine';
+  oscillator.frequency.setValueAtTime(440, ctx.currentTime);
+  gainNode.gain.setValueAtTime(0.2, ctx.currentTime);
+
+  oscillator.connect(gainNode);
+  gainNode.connect(ctx.destination);
+
+  oscillator.start();
+  oscillator.stop(ctx.currentTime + 0.2);
+}
+
 function updateVoiceUsersList(users){
   const list = document.getElementById("voiceUsersList");
   list.innerHTML = "";
@@ -277,9 +294,21 @@ function updateVoiceUsersList(users){
 }
 
 function setupVoiceUsersListener(){
+  let previousUsers = [];
+  
   voiceUsersRef().on("value", snap => {
     const usersObj = snap.val() || {};
     const users = Object.keys(usersObj);
+
+    users.forEach(u => {
+      if(!previousUsers.includes(u)){
+        if(u !== currentUser){
+          playJoinSound();
+        }
+      }
+    });
+
+    previousUsers = users;
     updateVoiceUsersList(users);
   });
 }
