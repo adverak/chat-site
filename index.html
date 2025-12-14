@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Secure Chat with Voice Call</title>
+<title>Secure Chat with Multi-User Voice Call</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
@@ -43,9 +43,14 @@
   </form>
 
   <p>
-    <button id="startCall">Start Voice Call</button>
-    <audio id="remoteAudio" autoplay></audio>
+    <button id="startCall">Join Voice Call</button>
+    <button id="leaveCall" style="display:none;">Leave Voice Call</button>
   </p>
+
+  <p>Users in voice call:</p>
+  <ul id="voiceUsersList"></ul>
+
+  <div id="remoteAudios"></div>
 </div>
 
 <!-- Firebase SDKs -->
@@ -122,10 +127,12 @@ async function login(){
   if(currentUser === adminName){ document.getElementById("clearBtn").style.display = "block"; }
 
   loadMessages();
+  setupVoiceUsersListener();
 }
 
 // ----------------- LOGOUT -----------------
 function logout(){
+  leaveVoiceCall(); // remove from voiceUsers if in call
   localStorage.removeItem("chatUser");
   currentUser = null;
   document.getElementById("authDiv").style.display = "block";
@@ -142,11 +149,13 @@ window.onload = function() {
     document.getElementById("chatDiv").style.display = "block";
     if(currentUser === adminName) document.getElementById("clearBtn").style.display = "block";
     loadMessages();
+    setupVoiceUsersListener();
   }
 };
 
 // ----------------- CHAT FUNCTIONS -----------------
 function setRoom(room){
+  leaveVoiceCall(); // leave old room
   currentRoom = room;
   document.getElementById("roomName").innerText = room;
   readRef.off();
@@ -154,6 +163,7 @@ function setRoom(room){
   readRef = writeRef.limitToLast(50);
   document.getElementById("messages").innerHTML = "";
   loadMessages();
+  setupVoiceUsersListener();
 }
 
 function loadMessages(){
@@ -215,60 +225,126 @@ function clearRoom(){
   }
 }
 
-// ----------------- VOICE CALL -----------------
+// ----------------- MULTI-USER VOICE CALL -----------------
 let localStream;
-let pc;
-const servers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-let callRef;
+let peers = {}; // { username: RTCPeerConnection }
+let inVoiceCall = false;
 
-document.getElementById("startCall").onclick = async function() {
-  if(!currentUser){ alert("Please login first"); return; }
+const voiceUsersRef = () => db.ref("voiceUsers/" + currentRoom);
+const callsRef = () => db.ref("calls/" + currentRoom);
 
-  callRef = db.ref("calls/" + currentRoom);
+// Update voice user list UI
+function updateVoiceUsersList(users){
+  const list = document.getElementById("voiceUsersList");
+  list.innerHTML = "";
+  users.forEach(u=>{
+    const li = document.createElement("li");
+    li.innerText = u;
+    list.appendChild(li);
+  });
+}
+
+function setupVoiceUsersListener(){
+  voiceUsersRef().on("value", snap => {
+    const usersObj = snap.val() || {};
+    const users = Object.keys(usersObj);
+    updateVoiceUsersList(users);
+  });
+}
+
+async function joinVoiceCall(){
+  if(inVoiceCall) return;
+  if(!currentUser) return alert("Login first");
+
+  inVoiceCall = true;
+  document.getElementById("startCall").style.display="none";
+  document.getElementById("leaveCall").style.display="inline";
+
+  // Add self to voiceUsers
+  await voiceUsersRef().child(currentUser).set(true);
+
   localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-  pc = new RTCPeerConnection(servers);
-  localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  // Listen for other users joining
+  voiceUsersRef().on("child_added", async snap => {
+    const otherUser = snap.key;
+    if(otherUser === currentUser) return;
 
-  pc.ontrack = (event) => {
-    document.getElementById("remoteAudio").srcObject = event.streams[0];
-  };
+    if(peers[otherUser]) return; // already connected
 
-  pc.onicecandidate = (event) => {
-    if(event.candidate){
-      callRef.push({ type: "candidate", candidate: event.candidate.toJSON(), sender: currentUser });
-    }
-  };
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+    peers[otherUser] = pc;
 
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  callRef.push({ type: "offer", sdp: offer.sdp, sender: currentUser });
+    // Add local audio
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-  callRef.on("child_added", async (snap) => {
-    const data = snap.val();
-    if(data.sender === currentUser) return;
+    // Remote audio element
+    const remoteAudio = document.createElement("audio");
+    remoteAudio.autoplay = true;
+    remoteAudio.id = "audio_" + otherUser;
+    document.getElementById("remoteAudios").appendChild(remoteAudio);
 
-    if(data.type === "answer"){
-      await pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
-    } else if(data.type === "candidate"){
-      try { await pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } 
-      catch(e){ console.error(e); }
-    } else if(data.type === "offer"){
-      if(!pc){
-        pc = new RTCPeerConnection(servers);
-        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-        pc.ontrack = (event) => document.getElementById("remoteAudio").srcObject = event.streams[0];
-        pc.onicecandidate = (event) => {
-          if(event.candidate) callRef.push({ type: "candidate", candidate: event.candidate.toJSON(), sender: currentUser });
-        };
+    pc.ontrack = e => { remoteAudio.srcObject = e.streams[0]; };
+
+    pc.onicecandidate = e => {
+      if(e.candidate) callsRef().child(otherUser + "_" + currentUser).set({ type: "candidate", candidate: e.candidate.toJSON() });
+    };
+
+    // Create offer
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    callsRef().child(currentUser + "_" + otherUser).set({ type: "offer", sdp: offer.sdp });
+
+    // Listen for signaling messages
+    callsRef().on("child_added", async snap => {
+      const data = snap.val();
+      const keyParts = snap.key.split("_");
+      const sender = keyParts[0], receiver = keyParts[1];
+      if(receiver !== currentUser) return; // ignore messages not for me
+      if(!peers[sender]) return;
+
+      if(data.type === "offer"){
+        await peers[sender].setRemoteDescription({ type: "offer", sdp: data.sdp });
+        const answer = await peers[sender].createAnswer();
+        await peers[sender].setLocalDescription(answer);
+        callsRef().child(currentUser + "_" + sender).set({ type: "answer", sdp: answer.sdp });
+      } else if(data.type === "answer"){
+        await peers[sender].setRemoteDescription({ type: "answer", sdp: data.sdp });
+      } else if(data.type === "candidate"){
+        try { await peers[sender].addIceCandidate(new RTCIceCandidate(data.candidate)); } 
+        catch(e){ console.error(e); }
       }
-      await pc.setRemoteDescription({ type: "offer", sdp: data.sdp });
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      callRef.push({ type: "answer", sdp: answer.sdp, sender: currentUser });
-    }
+    });
   });
-};
+}
+
+async function leaveVoiceCall(){
+  if(!inVoiceCall) return;
+  inVoiceCall = false;
+  document.getElementById("startCall").style.display="inline";
+  document.getElementById("leaveCall").style.display="none";
+
+  // Remove self from voiceUsers
+  await voiceUsersRef().child(currentUser).remove();
+
+  // Close all PeerConnections
+  Object.values(peers).forEach(pc => pc.close());
+  peers = {};
+
+  // Remove remote audio elements
+  document.getElementById("remoteAudios").innerHTML="";
+}
+
+// Buttons
+document.getElementById("startCall").onclick = joinVoiceCall;
+document.getElementById("leaveCall").onclick = leaveVoiceCall;
+
+// Remove user from voiceUsers if closing tab
+window.addEventListener("beforeunload", async () => {
+  if(inVoiceCall && currentUser){
+    await voiceUsersRef().child(currentUser).remove();
+  }
+});
 </script>
 </body>
 </html>
