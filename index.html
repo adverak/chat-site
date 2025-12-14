@@ -2,16 +2,22 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Chat With Login</title>
+  <title>Chat With Signup/Login</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
 
-<h2>Chat (Login Required)</h2>
+<h2>Chat (Signup/Login Required)</h2>
 
-<div id="loginDiv">
-  <p>Enter your username:</p>
-  <input id="loginInput" placeholder="Username" style="width:95%; padding:5px;">
+<div id="authDiv">
+  <h3>Signup</h3>
+  <input id="signupUser" placeholder="Username" style="width:95%; padding:5px;"><br>
+  <input id="signupPass" type="password" placeholder="Password" style="width:95%; padding:5px;"><br>
+  <button onclick="signup()">Signup</button>
+
+  <h3>Login</h3>
+  <input id="loginUser" placeholder="Username" style="width:95%; padding:5px;"><br>
+  <input id="loginPass" type="password" placeholder="Password" style="width:95%; padding:5px;"><br>
   <button onclick="login()">Login</button>
 </div>
 
@@ -59,25 +65,63 @@
   let writeRef = db.ref("rooms/" + currentRoom);
   let readRef = writeRef.limitToLast(50);
 
-  function login() {
-    const username = document.getElementById("loginInput").value.trim();
-    if(!username){
-      alert("Please enter a username");
+  // ----------------- SIGNUP -----------------
+  function signup(){
+    const username = document.getElementById("signupUser").value.trim();
+    const password = document.getElementById("signupPass").value.trim();
+    if(!username || !password){
+      alert("Enter username and password");
       return;
     }
-    currentUser = username;
-    document.getElementById("userNameDisplay").innerText = currentUser;
-    document.getElementById("loginDiv").style.display = "none";
-    document.getElementById("chatDiv").style.display = "block";
 
-    // Show admin button only for admin
-    if(currentUser === adminName){
-      document.getElementById("clearBtn").style.display = "block";
-    }
-
-    loadMessages();
+    const userRef = db.ref("users/" + username);
+    userRef.get().then(snapshot => {
+      if(snapshot.exists()){
+        alert("Username already exists");
+      } else {
+        userRef.set({ password: password });
+        alert("Signup successful! Please login.");
+        document.getElementById("signupUser").value="";
+        document.getElementById("signupPass").value="";
+      }
+    });
   }
 
+  // ----------------- LOGIN -----------------
+  function login(){
+    const username = document.getElementById("loginUser").value.trim();
+    const password = document.getElementById("loginPass").value.trim();
+    if(!username || !password){
+      alert("Enter username and password");
+      return;
+    }
+
+    const userRef = db.ref("users/" + username);
+    userRef.get().then(snapshot=>{
+      if(!snapshot.exists()){
+        alert("Username does not exist");
+      } else {
+        const storedPass = snapshot.val().password;
+        if(storedPass !== password){
+          alert("Incorrect password");
+        } else {
+          currentUser = username;
+          document.getElementById("userNameDisplay").innerText = currentUser;
+          document.getElementById("authDiv").style.display = "none";
+          document.getElementById("chatDiv").style.display = "block";
+
+          // Show admin button only for admin
+          if(currentUser === adminName){
+            document.getElementById("clearBtn").style.display = "block";
+          }
+
+          loadMessages();
+        }
+      }
+    });
+  }
+
+  // ----------------- CHAT FUNCTIONS -----------------
   function setRoom(room){
     currentRoom = room;
     document.getElementById("roomName").innerText = room;
@@ -100,7 +144,7 @@
 
       // Highlight admin messages
       if(msg.user === adminName){
-        div.style.backgroundColor = "#ffe599"; // light yellow
+        div.style.backgroundColor = "#ffe599";
         div.style.fontWeight = "bold";
       }
 
@@ -152,6 +196,7 @@
       document.getElementById("messages").innerHTML = "";
     }
   }
+
 </script>
 
 </body>
